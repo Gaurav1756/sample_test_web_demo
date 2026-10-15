@@ -3,6 +3,7 @@ import Link from "next/link";
 import { serverApi } from "@/lib/session";
 import { ApiError } from "@/lib/api-errors";
 import { toList, type EventDetail, type TeamMember } from "@/lib/api-types";
+import { splitEventTeam, teamMemberKey, teamMemberName } from "@/lib/admin-team";
 import { formatDateTime, formatPaise } from "@/lib/format";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { RefreshButton } from "@/components/ui/refresh-button";
@@ -23,7 +24,7 @@ interface AttendeeRow {
   spentPaise: number;
 }
 
-/** Single-event oversight (§11): facts, attendee rollup, team roster. */
+/** Single-event oversight (§11): facts, attendee rollup, hosts, and event staff. */
 export default async function AdminEventDetailPage({ params }: Props) {
   const { id } = await params;
 
@@ -66,6 +67,12 @@ export default async function AdminEventDetailPage({ params }: Props) {
       </main>
     );
   }
+
+  const { hosts, staff } = splitEventTeam(team);
+  const primaryHostId = event.host?.id;
+  const coHosts = primaryHostId
+    ? hosts.filter((member) => (member.user?.id ?? member.userId) !== primaryHostId)
+    : hosts;
 
   const facts: Array<[string, string]> = [
     ["Host", event.host?.name ?? "—"],
@@ -116,7 +123,8 @@ export default async function AdminEventDetailPage({ params }: Props) {
                     <span className="text-stone-500"> @{row.user.username}</span>
                   </span>
                   <span className="text-stone-600">
-                    {row.tickets} ticket{row.tickets === 1 ? "" : "s"} · {row.checkedIn} checked in ·{" "}
+                    {row.orders} order{row.orders === 1 ? "" : "s"} · {row.tickets} ticket
+                    {row.tickets === 1 ? "" : "s"} · {row.checkedIn} checked in ·{" "}
                     <span className="font-semibold text-ink-900">{formatPaise(row.spentPaise)}</span>
                   </span>
                 </li>
@@ -128,26 +136,68 @@ export default async function AdminEventDetailPage({ params }: Props) {
         </div>
       </section>
 
-      <section aria-label="Event team" className="mt-8">
-        <h2 className="font-display text-xl">Event team</h2>
+      <section aria-label="Hosts" className="mt-8">
+        <h2 className="font-display text-xl">
+          Hosts
+          <span className="ml-2 text-base font-normal text-stone-500">
+            {event.host || coHosts.length > 0
+              ? `${(event.host ? 1 : 0) + coHosts.length} host${(event.host ? 1 : 0) + coHosts.length === 1 ? "" : "s"}`
+              : "none listed"}
+          </span>
+        </h2>
         <div className="mt-3">
-          {team.length > 0 ? (
+          {event.host || coHosts.length > 0 ? (
             <ul className="flex flex-col gap-2">
-              {team.map((member, i) => {
-                const who = member.user?.name ?? member.userId ?? member.memberId ?? `Member ${i + 1}`;
-                return (
-                  <li
-                    key={member.userId ?? member.memberId ?? i}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 px-4 py-3 text-sm"
-                  >
-                    <span className="font-semibold">{who}</span>
-                    <span className="text-stone-600">{(member.permissions ?? []).join(", ") || "no permissions"}</span>
-                  </li>
-                );
-              })}
+              {event.host ? (
+                <li className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 px-4 py-3 text-sm">
+                  <span className="font-semibold">{event.host.name}</span>
+                  <span className="text-stone-600">Primary host</span>
+                </li>
+              ) : null}
+              {coHosts.map((member, i) => (
+                <li
+                  key={teamMemberKey(member, i)}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 px-4 py-3 text-sm"
+                >
+                  <span className="font-semibold">{teamMemberName(member, `Co-host ${i + 1}`)}</span>
+                  <span className="text-stone-600">
+                    {(member.permissions ?? []).join(", ") || "manage_event"}
+                  </span>
+                </li>
+              ))}
             </ul>
           ) : (
-            <p className="text-sm text-stone-500">No team members assigned.</p>
+            <p className="text-sm text-stone-500">No hosts listed for this event.</p>
+          )}
+        </div>
+      </section>
+
+      <section aria-label="Event staff" className="mt-8">
+        <h2 className="font-display text-xl">
+          Event staff
+          <span className="ml-2 text-base font-normal text-stone-500">
+            {staff.length} member{staff.length === 1 ? "" : "s"}
+          </span>
+        </h2>
+        <div className="mt-3">
+          {staff.length > 0 ? (
+            <ul className="flex flex-col gap-2">
+              {staff.map((member, i) => (
+                <li
+                  key={teamMemberKey(member, i)}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 px-4 py-3 text-sm"
+                >
+                  <span className="font-semibold">{teamMemberName(member, `Staff ${i + 1}`)}</span>
+                  <span className="text-stone-600">
+                    {(member.permissions ?? []).join(", ") || "no permissions"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-stone-500">
+              No staff assigned — team members with ticket-scanning duty appear here.
+            </p>
           )}
         </div>
       </section>

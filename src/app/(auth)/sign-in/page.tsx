@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { isMockData } from "@/lib/data-source";
 import { SignInForm } from "@/components/auth/sign-in-form";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -14,5 +15,5 @@ function first(value: string | string[] | undefined): string {
 
 export default async function SignInPage({ searchParams }: Props) {
   const params = (await searchParams) ?? {};
-  return <SignInForm next={first(params.next)} resetDone={first(params.reset) === "1"} />;
+  return <SignInForm next={first(params.next)} resetDone={first(params.reset) === "1"} demo={isMockData()} />;
 }

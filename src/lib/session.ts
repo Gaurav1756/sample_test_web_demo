@@ -10,8 +10,12 @@ import { forbidden } from "next/navigation";
 import { createApiClient } from "./api-client";
 import { ACCESS_COOKIE, REFRESH_COOKIE, ROLE_COOKIE } from "./cookies";
 import type { Role, User } from "./api-types";
+import { MOCK_BASE_URL, dataSourceKind } from "./data-source";
+import { mockFetch } from "./mock/mock-fetch";
 
 export function apiBaseUrl(): string {
+  // Mock mode needs no backend URL; the placeholder origin is never fetched.
+  if (dataSourceKind() === "mock") return MOCK_BASE_URL;
   const url = process.env.PEGWIN_API_BASE_URL;
   if (!url) throw new Error("PEGWIN_API_BASE_URL is not configured.");
   return url;
@@ -62,6 +66,9 @@ export async function serverApi() {
   const jar = await cookies();
   return createApiClient({
     baseUrl: apiBaseUrl(),
+    // Sample-data mode serves every path from the in-memory mock backend;
+    // pages and actions call the identical client surface either way.
+    ...(dataSourceKind() === "mock" ? { fetchImpl: mockFetch as typeof fetch } : {}),
     tokens: {
       getAccessToken: () => jar.get(ACCESS_COOKIE)?.value,
       getRefreshToken: () => jar.get(REFRESH_COOKIE)?.value,

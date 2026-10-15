@@ -13,6 +13,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           items={[
             { label: "Overview", href: "/admin" },
             { label: "Review queue", href: "/admin/review", prefix: true },
+            { label: "Events", href: "/admin/events", prefix: true },
             { label: "Hosts", href: "/admin/hosts" },
             { label: "Moderation", href: "/admin/moderation" },
             { label: "Coupons", href: "/admin/coupons" },

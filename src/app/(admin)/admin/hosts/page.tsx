@@ -4,18 +4,32 @@ import { ApiError } from "@/lib/api-errors";
 import { toList, type FlaggedHost } from "@/lib/api-types";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { RefreshButton } from "@/components/ui/refresh-button";
+import { Tabs } from "@/components/ui/tabs";
 import { HostRow } from "@/components/admin/host-row";
 
-export const metadata: Metadata = { title: "Flagged hosts" };
+export const metadata: Metadata = { title: "Hosts" };
 
-/** Enforcement for hosts with ≥3 cancellations or violations (§13). */
-export default async function AdminHostsPage() {
+type Props = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function first(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
+}
+
+/** Host monitoring (§11): every host, or only flagged ones (layout gates role). */
+export default async function AdminHostsPage({ searchParams }: Props) {
+  const tab = first((await searchParams)?.tab) === "all" ? "all" : "flagged";
+
   let hosts: FlaggedHost[] = [];
   let failure: { title: string; body: string } | null = null;
 
   try {
     const api = await serverApi();
-    hosts = toList<FlaggedHost>(await api.get<unknown>("admin/hosts/flagged"));
+    hosts = toList<FlaggedHost>(
+      await api.get<unknown>(tab === "all" ? "admin/hosts" : "admin/hosts/flagged"),
+    );
   } catch (e) {
     const g =
       e instanceof ApiError
@@ -26,7 +40,16 @@ export default async function AdminHostsPage() {
 
   return (
     <main>
-      <h1 className="font-display text-3xl">Flagged hosts</h1>
+      <h1 className="font-display text-3xl">Hosts</h1>
+      <div className="mt-4">
+        <Tabs
+          label="Host list"
+          items={[
+            { label: "Flagged", href: "/admin/hosts?tab=flagged", active: tab === "flagged" },
+            { label: "All hosts", href: "/admin/hosts?tab=all", active: tab === "all" },
+          ]}
+        />
+      </div>
       <div className="mt-6">
         {failure ? (
           <>
@@ -41,8 +64,10 @@ export default async function AdminHostsPage() {
               <HostRow key={host.hostId ?? host.id ?? i} host={host} />
             ))}
           </ul>
-        ) : (
+        ) : tab === "flagged" ? (
           <EmptyState title="No flagged hosts" body="Hosts with violations will appear here." />
+        ) : (
+          <EmptyState title="No hosts yet" body="Hosts appear here once they register." />
         )}
       </div>
     </main>

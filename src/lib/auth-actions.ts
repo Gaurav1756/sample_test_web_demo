@@ -8,6 +8,8 @@
 import { redirect } from "next/navigation";
 import { createApiClient } from "./api-client";
 import { apiBaseUrl, clearSession, serverApi, setSession } from "./session";
+import { dataSourceKind } from "./data-source";
+import { mockFetch } from "./mock/mock-fetch";
 import type {
   AuthTokens,
   LoginResponse,
@@ -18,6 +20,7 @@ import type {
 } from "./api-types";
 import { loginRequiresOtp } from "./api-types";
 import {
+  normalizeIndianPhone,
   validateContact,
   validateName,
   validateOtp,
@@ -27,7 +30,10 @@ import {
 import { actionFailed as fail, type ActionResult } from "./action-result";
 
 function publicApi() {
-  return createApiClient({ baseUrl: apiBaseUrl() });
+  return createApiClient({
+    baseUrl: apiBaseUrl(),
+    ...(dataSourceKind() === "mock" ? { fetchImpl: mockFetch as typeof fetch } : {}),
+  });
 }
 
 /** Guard against open redirects: only same-origin absolute paths. */
@@ -39,6 +45,8 @@ function safeNext(value: string | undefined, fallback: string): string {
 function landingFor(role: Role): string {
   if (role === "super_admin") return "/admin";
   if (role === "host") return "/host";
+  // Staff have no dashboard; their whole surface is the assigned scanner.
+  if (role === "event_staff") return "/host/scanner";
   return "/home";
 }
 
@@ -47,7 +55,9 @@ async function contactQuery(form: FormData): Promise<{ phone?: string; email?: s
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const invalid = validateContact(phone, email);
   if (invalid) return { ok: false, message: invalid };
-  return { ...(phone ? { phone } : {}), ...(phone ? {} : { email }) };
+  // Send the normalized E.164 form so "98200 00001" and "+919820000001" match.
+  const normalized = phone ? normalizeIndianPhone(phone) : null;
+  return { ...(normalized ? { phone: normalized } : {}), ...(normalized ? {} : { email }) };
 }
 
 export async function signUp(_prev: ActionResult, form: FormData): Promise<ActionResult> {
@@ -66,6 +76,9 @@ export async function signUp(_prev: ActionResult, form: FormData): Promise<Actio
   if (passwordError) return { ok: false, message: passwordError };
   if (password !== confirm) return { ok: false, message: "Passwords do not match." };
 
+  // redirect() throws: compute the destination inside try, navigate after,
+  // so success is never swallowed into a failure result.
+  let destination: string;
   try {
     const api = publicApi();
     const res = await api.post<RegisterResponse>("auth/register", {
@@ -77,10 +90,11 @@ export async function signUp(_prev: ActionResult, form: FormData): Promise<Actio
     const next = safeNext(String(form.get("next") ?? ""), "");
     const q = new URLSearchParams({ purpose: "register", ...contact });
     if (next) q.set("next", next);
-    redirect(`/verify-otp?${q.toString()}`);
+    destination = `/verify-otp?${q.toString()}`;
   } catch (e) {
     return fail(e);
   }
+  redirect(destination);
 }
 
 async function requestOtpCode(
@@ -94,15 +108,17 @@ async function requestOtpCode(
 export async function startLoginOtp(_prev: ActionResult, form: FormData): Promise<ActionResult> {
   const contact = await contactQuery(form);
   if ("ok" in contact) return contact;
+  let destination: string;
   try {
     await requestOtpCode(contact, "login");
     const next = safeNext(String(form.get("next") ?? ""), "");
     const q = new URLSearchParams({ purpose: "login", ...contact });
     if (next) q.set("next", next);
-    redirect(`/verify-otp?${q.toString()}`);
+    destination = `/verify-otp?${q.toString()}`;
   } catch (e) {
     return fail(e);
   }
+  redirect(destination);
 }
 
 export async function verifyOtp(_prev: ActionResult, form: FormData): Promise<ActionResult> {
@@ -115,6 +131,7 @@ export async function verifyOtp(_prev: ActionResult, form: FormData): Promise<Ac
   if (!["register", "login", "reset"].includes(purpose)) {
     return { ok: false, message: "Invalid verification request. Start again." };
   }
+  let destination: string;
   try {
     const api = publicApi();
     const res = await api.post<AuthTokens>("auth/otp/verify", { ...contact, otp, purpose });
@@ -124,11 +141,11 @@ export async function verifyOtp(_prev: ActionResult, form: FormData): Promise<Ac
     );
     const next = safeNext(String(form.get("next") ?? ""), "");
     // New registrations continue to onboarding (AUTH-05); everyone else home.
-    if (!next && purpose === "register") redirect("/onboarding/preferences");
-    redirect(next || landingFor(res.user.role));
+    destination = !next && purpose === "register" ? "/onboarding/preferences" : next || landingFor(res.user.role);
   } catch (e) {
     return fail(e);
   }
+  redirect(destination);
 }
 
 export async function resendOtp(_prev: ActionResult, form: FormData): Promise<ActionResult> {
@@ -153,6 +170,7 @@ export async function signIn(_prev: ActionResult, form: FormData): Promise<Actio
   if ("ok" in contact) return contact;
   const password = String(form.get("password") ?? "");
   if (!password) return { ok: false, message: "Enter your password, or continue with a code." };
+  let destination: string;
   try {
     const api = publicApi();
     const res = await api.post<LoginResponse>("auth/login", { ...contact, password });
@@ -160,29 +178,33 @@ export async function signIn(_prev: ActionResult, form: FormData): Promise<Actio
     if (loginRequiresOtp(res)) {
       const q = new URLSearchParams({ purpose: "login", ...contact });
       if (next) q.set("next", next);
-      redirect(`/verify-otp?${q.toString()}`);
+      destination = `/verify-otp?${q.toString()}`;
+    } else {
+      await setSession(
+        { accessToken: res.accessToken, refreshToken: res.refreshToken },
+        res.user.role,
+      );
+      destination = next || landingFor(res.user.role);
     }
-    await setSession(
-      { accessToken: res.accessToken, refreshToken: res.refreshToken },
-      res.user.role,
-    );
-    redirect(next || landingFor(res.user.role));
   } catch (e) {
     return fail(e);
   }
+  redirect(destination);
 }
 
 export async function forgotPassword(_prev: ActionResult, form: FormData): Promise<ActionResult> {
   const contact = await contactQuery(form);
   if ("ok" in contact) return contact;
+  let destination: string;
   try {
     const api = publicApi();
     await api.post("auth/password/forgot", contact);
     const q = new URLSearchParams({ ...contact });
-    redirect(`/reset-password?${q.toString()}`);
+    destination = `/reset-password?${q.toString()}`;
   } catch (e) {
     return fail(e);
   }
+  redirect(destination);
 }
 
 export async function resetPassword(_prev: ActionResult, form: FormData): Promise<ActionResult> {
@@ -196,13 +218,15 @@ export async function resetPassword(_prev: ActionResult, form: FormData): Promis
   const passwordError = validatePassword(password);
   if (passwordError) return { ok: false, message: passwordError };
   if (password !== confirm) return { ok: false, message: "Passwords do not match." };
+  let destination: string;
   try {
     const api = publicApi();
     await api.post("auth/password/reset", { ...contact, otp, newPassword: password });
-    redirect("/sign-in?reset=1");
+    destination = "/sign-in?reset=1";
   } catch (e) {
     return fail(e);
   }
+  redirect(destination);
 }
 
 export async function signOut(): Promise<void> {

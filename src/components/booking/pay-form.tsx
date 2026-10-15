@@ -18,7 +18,7 @@ import { StatusBadge } from "@/components/ui/badge";
  * the backend says. The §8 contract itself is a TBD draft (CQ-14): until the
  * backend finalizes it, expect honest errors here, never a fake success.
  */
-export function PayForm({ order }: { order: Order }) {
+export function PayForm({ order, simulated }: { order: Order; simulated?: boolean }) {
   const [method, setMethod] = React.useState("upi");
   const [busy, setBusy] = React.useState(false);
   const [intent, setIntent] = React.useState<PaymentIntent | null>(null);
@@ -70,6 +70,11 @@ export function PayForm({ order }: { order: Order }) {
     <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
       <div>
         <h2 className="font-display text-xl">Pay</h2>
+        {simulated ? (
+          <p className="mt-2 max-w-md rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Simulated payment — confirms instantly and no real money moves.
+          </p>
+        ) : null}
         <div className="mt-4 max-w-sm">
           <Field label="Payment method" htmlFor="method">
             <Select value={method} onChange={(e) => setMethod(e.target.value)}>

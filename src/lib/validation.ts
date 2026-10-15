@@ -26,11 +26,23 @@ export function validateEmail(value: string): string | null {
   return null;
 }
 
-const PHONE_RE = /^\+[0-9]{3,15}$/;
+/**
+ * Normalize Indian mobile input to E.164 (+91XXXXXXXXXX), or null when
+ * invalid. Accepts a 10-digit number starting 6–9 with an optional
+ * +91 / 91 / 0 prefix; spaces and dashes are ignored. The app is
+ * India-only, so no other country codes are accepted.
+ */
+export function normalizeIndianPhone(value: string): string | null {
+  const digits = value.replace(/[^\d]/g, "");
+  let rest = digits;
+  if (rest.length === 12 && rest.startsWith("91")) rest = rest.slice(2);
+  else if (rest.length === 11 && rest.startsWith("0")) rest = rest.slice(1);
+  if (!/^[6-9][0-9]{9}$/.test(rest)) return null;
+  return `+91${rest}`;
+}
 
 export function validatePhone(value: string): string | null {
-  const v = value.trim();
-  if (!PHONE_RE.test(v)) return "Enter a phone number in international format, e.g. +919800000000.";
+  if (!normalizeIndianPhone(value)) return "Enter a valid 10-digit Indian mobile number.";
   return null;
 }
 

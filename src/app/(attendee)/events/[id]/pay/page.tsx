@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireSession, serverApi } from "@/lib/session";
+import { isMockData } from "@/lib/data-source";
 import { ApiError } from "@/lib/api-errors";
 import type { Order } from "@/lib/api-types";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -66,7 +67,7 @@ export default async function PayPage({ params, searchParams }: Props) {
             </div>
           </>
         ) : (
-          <PayForm order={order} />
+          <PayForm order={order} simulated={isMockData()} />
         )}
       </div>
     </main>

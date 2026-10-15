@@ -47,10 +47,11 @@ export async function saveOnboarding(_prev: ActionResult, form: FormData): Promi
     if (Object.keys(prefs).length > 0) {
       await api.patch<NotificationPreferences>("users/me/notification-preferences", prefs);
     }
-    redirect("/home");
   } catch (e) {
     return actionFailed(e);
   }
+  // redirect() throws: navigate after try so success is never swallowed.
+  redirect("/home");
 }
 
 export async function updateProfile(_prev: ActionResult, form: FormData): Promise<ActionResult> {
@@ -76,10 +77,10 @@ export async function updateProfile(_prev: ActionResult, form: FormData): Promis
       ...(form.has("city") ? { city } : {}),
       ...(avatarUrl ? { avatarUrl } : {}),
     });
-    redirect("/profile?saved=1");
   } catch (e) {
     return actionFailed(e);
   }
+  redirect("/profile?saved=1");
 }
 
 export async function updateNotificationPrefs(

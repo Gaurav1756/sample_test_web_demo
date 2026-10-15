@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizeIndianPhone,
   validateContact,
   validateCouponCode,
   validateEmail,
@@ -32,14 +33,30 @@ describe("auth validators mirror §1a/§2 constraints", () => {
     expect(validateEmail("a@")).not.toBeNull();
   });
 
-  it("phone is E.164", () => {
+  it("phone is a 10-digit Indian mobile number", () => {
+    expect(validatePhone("9800000000")).toBeNull();
     expect(validatePhone("+919800000000")).toBeNull();
-    expect(validatePhone("9800000000")).not.toBeNull();
+    expect(validatePhone("+91 98000 00000")).toBeNull();
+    expect(validatePhone("09800000000")).toBeNull();
+    expect(validatePhone("919800000000")).toBeNull();
     expect(validatePhone("+91")).not.toBeNull();
+    expect(validatePhone("12345")).not.toBeNull();
+    expect(validatePhone("5800000000")).not.toBeNull();
+    expect(validatePhone("+1 5551234567")).not.toBeNull();
+  });
+
+  it("normalizes Indian input to E.164", () => {
+    expect(normalizeIndianPhone("9800000000")).toBe("+919800000000");
+    expect(normalizeIndianPhone("+91 98000 00000")).toBe("+919800000000");
+    expect(normalizeIndianPhone("09800000000")).toBe("+919800000000");
+    expect(normalizeIndianPhone("919800000000")).toBe("+919800000000");
+    expect(normalizeIndianPhone("+1 5551234567")).toBeNull();
+    expect(normalizeIndianPhone("12345")).toBeNull();
   });
 
   it("one of phone/email is required", () => {
     expect(validateContact("", "")).not.toBeNull();
+    expect(validateContact("9800000000", "")).toBeNull();
     expect(validateContact("+919800000000", "")).toBeNull();
     expect(validateContact("", "asha@example.com")).toBeNull();
   });

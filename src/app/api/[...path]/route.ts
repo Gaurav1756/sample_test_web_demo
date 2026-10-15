@@ -5,9 +5,14 @@
  * tokens: the access token is attached server-side from httpOnly cookies,
  * a single refresh-on-401 is attempted, and backend cookies are never
  * forwarded. Backend responses (including errors) pass through untouched.
+ *
+ * When PEGWIN_DATA_SOURCE=mock, requests are served from the in-memory
+ * sample backend instead (same paths, same envelopes).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/cookies";
+import { dataSourceKind } from "@/lib/data-source";
+import { handleMockRequest, type MockMethod } from "@/lib/mock/router";
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
@@ -15,7 +20,49 @@ function backendError(status: number, code: string, message: string) {
   return NextResponse.json({ error: { code, message } }, { status });
 }
 
+/** Sample-data branch: same-origin /api/* → in-memory mock backend. */
+async function mockRoute(req: NextRequest, segments: string[]) {
+  if (segments.some((s) => s === ".." || s.includes("\\"))) {
+    return backendError(400, "VALIDATION_ERROR", "Invalid request path.");
+  }
+  const query: Record<string, string> = {};
+  req.nextUrl.searchParams.forEach((value, key) => {
+    if (!(key in query)) query[key] = value;
+  });
+  const hasBody = req.method !== "GET" && req.method !== "DELETE";
+  let body: unknown;
+  if (hasBody) {
+    const text = await req.text();
+    if (text) {
+      try {
+        body = JSON.parse(text) as unknown;
+      } catch {
+        body = text;
+      }
+    }
+  }
+  const result = handleMockRequest({
+    method: req.method as MockMethod,
+    segments: segments.map((s) => {
+      try {
+        return decodeURIComponent(s);
+      } catch {
+        return s;
+      }
+    }),
+    query,
+    authToken: req.cookies.get(ACCESS_COOKIE)?.value,
+    body,
+    idempotencyKey: req.headers.get("idempotency-key") ?? undefined,
+  });
+  if (result.status === 204 || result.body === null || result.body === undefined) {
+    return new NextResponse(null, { status: result.status });
+  }
+  return NextResponse.json(result.body, { status: result.status });
+}
+
 async function proxy(req: NextRequest, segments: string[]) {
+  if (dataSourceKind() === "mock") return mockRoute(req, segments);
   const baseUrl = process.env.PEGWIN_API_BASE_URL;
   if (!baseUrl) return backendError(500, "MISCONFIGURED", "API base URL is not configured.");
   if (segments.some((s) => s === ".." || s.includes("\\"))) {

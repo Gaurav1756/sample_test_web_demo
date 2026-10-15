@@ -13,12 +13,12 @@ export function ContactFields({
 }) {
   return (
     <>
-      <Field label="Phone" htmlFor="phone" hint="International format, e.g. +919800000000.">
+      <Field label="Phone" htmlFor="phone" hint="10-digit Indian mobile number, e.g. 98200 00001.">
         <Input
           name="phone"
           type="tel"
           autoComplete="tel"
-          placeholder="+91…"
+          placeholder="98200 00001"
           defaultValue={defaultPhone}
         />
       </Field>

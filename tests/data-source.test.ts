@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dataSourceKind, isMockData, MOCK_BASE_URL } from "../src/lib/data-source";
+import { dataSourceKind, isDemoMockAllowed, isMockData, MOCK_BASE_URL } from "../src/lib/data-source";
 
 function env(values: Record<string, string | undefined>): NodeJS.ProcessEnv {
   return values as unknown as NodeJS.ProcessEnv;
@@ -21,6 +21,21 @@ describe("data source switch", () => {
     expect(() => dataSourceKind(env({ PEGWIN_DATA_SOURCE: "mock", NODE_ENV: "production" }))).toThrow(
       /not allowed in production/,
     );
+  });
+
+  it("allows mock in production only with the explicit demo opt-in", () => {
+    expect(
+      dataSourceKind(
+        env({ PEGWIN_DATA_SOURCE: "mock", NODE_ENV: "production", PEGWIN_ALLOW_DEMO_MOCK: "true" }),
+      ),
+    ).toBe("mock");
+    expect(() =>
+      dataSourceKind(
+        env({ PEGWIN_DATA_SOURCE: "mock", NODE_ENV: "production", PEGWIN_ALLOW_DEMO_MOCK: "false" }),
+      ),
+    ).toThrow(/not allowed in production/);
+    expect(isDemoMockAllowed(env({ PEGWIN_ALLOW_DEMO_MOCK: "true" }))).toBe(true);
+    expect(isDemoMockAllowed(env({}))).toBe(false);
   });
 
   it("exposes a non-throwing UI check", () => {
